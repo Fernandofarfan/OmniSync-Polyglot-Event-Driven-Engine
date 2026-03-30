@@ -3,7 +3,7 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 COPY . .
 # Asumiendo que usas tsc para compilar
 RUN npx tsc
@@ -13,13 +13,13 @@ FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Usar usuario no root
-RUN adduser -D nonroot
-USER nonroot
-
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install --omit=dev
 COPY --from=builder /app/dist ./dist
+
+# Crear usuario y darle permisos antes de cambiar
+RUN adduser -D nonroot && chown -R nonroot:nonroot /app
+USER nonroot
 
 EXPOSE 3000
 CMD ["node", "dist/index.js"]
