@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: inventory-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/inventory_db}
+    username: ${SPRING_DATASOURCE_USERNAME:inventory_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:inventory_password}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+  cloud:
+    function:
+      definition: processOrderEvents
+    stream:
+      bindings:
+        processOrderEvents-in-0:
+          destination: order-events
+          group: inventory-group
+          consumer:
+            max-attempts: 3 # Reintentos antes de mandar a DLQ
+        processOrderEvents-out-0:
+          destination: stock-events # Emite respuesta (Saga Reply)
+      rabbit:
+        bindings:
+          processOrderEvents-in-0:
+            consumer:
+              auto-bind-dlq: true
+              republish-to-dlq: true
+              dlq-name: order-events.inventory-group.dlq
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: 5672
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
+
+server:
+  port: 8080
+
+management:
+  tracing:
+    sampling:
+      probability: 1.0 # 100% trace recording
+  zipkin:
+    tracing:
+      endpoint: ${MANAGEMENT_ZIPKIN_TRACING_ENDPOINT:http://localhost:9411/api/v2/spans}
+

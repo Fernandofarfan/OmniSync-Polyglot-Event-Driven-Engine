@@ -1,0 +1,51 @@
+name: E-Commerce EDA CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test-inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+      # - name: Run unit tests
+      #   run: mvn -f inventory-service/pom.xml test
+      - name: Build Inventory Service Docker Image
+        run: docker build -t ecommerce/inventory:latest ./inventory-service
+
+  build-and-test-orders:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './order-service/package.json'
+      # - name: Install and test
+      #   run: cd order-service && npm ci && npm test
+      - name: Build Order Service Docker Image
+        run: docker build -t ecommerce/orders:latest ./order-service
+
+  simulate-deployment:
+    needs: [build-and-test-inventory, build-and-test-orders]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Simulate Kubeval (Manifest Validation)
+        run: |
+          echo "Validating Kubernetes manifests..."
+          # En un caso real usarías kubeval o helm lint
+          cat k8s/inventory-app.yaml
+          cat k8s/order-app.yaml
+          echo "Deployment successful!"

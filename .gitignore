@@ -1,0 +1,21 @@
+# Node.js
+node_modules/
+dist/
+npm-debug.log
+.env
+
+# Java / Spring Boot
+target/
+*.jar
+*.war
+*.log
+.mvn/
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
