@@ -7,10 +7,13 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:inventory_password}
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     properties:
       hibernate:
         format_sql: true
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
   cloud:
     function:
       definition: processOrderEvents
@@ -46,4 +49,5 @@ management:
   zipkin:
     tracing:
       endpoint: ${MANAGEMENT_ZIPKIN_TRACING_ENDPOINT:http://localhost:9411/api/v2/spans}
+
 

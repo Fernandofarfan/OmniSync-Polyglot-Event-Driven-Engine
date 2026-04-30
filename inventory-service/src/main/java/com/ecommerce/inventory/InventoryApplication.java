@@ -7,6 +7,7 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.transaction.annotation.Transactional;
 import java.util.function.Function;
 import java.util.Map;
 import java.util.HashMap;
@@ -19,37 +20,60 @@ public class InventoryApplication {
         SpringApplication.run(InventoryApplication.class, args);
     }
 
-    // Function (consume y produce para Saga Coreography)
+    // Function (consume y produce para Saga Coreography con Idempotencia)
     @Bean
-    public Function<Message<Map<String, Object>>, Message<Map<String, Object>>> processOrderEvents(InventoryRepository repository) {
+    @Transactional
+    public Function<Message<Map<String, Object>>, Message<Map<String, Object>>> processOrderEvents(
+            InventoryRepository inventoryRepository, 
+            ProcessedEventRepository eventRepository) {
+            
         return message -> {
             log.info("Received Order Message with headers: {}", message.getHeaders());
             Map<String, Object> payload = message.getPayload();
             
-            // Simular parseo seguro para el ejemplo
             try {
+                String eventId = (String) payload.get("eventId");
+                
+                // 1. Validar Idempotencia (Patrón Inbox)
+                if (eventId != null && eventRepository.existsById(eventId)) {
+                    log.info("Event {} already processed. Ignoring to maintain idempotency.", eventId);
+                    // Opcionalmente devolver null detendría la ejecución sin enviar mensaje
+                    // pero para la Saga es mejor devolver el estado actual en un escenario avanzado.
+                    return null; 
+                }
+
                 Map<String, Object> data = (Map<String, Object>) payload.get("data");
                 String productId = (String) data.get("productId");
                 Integer quantity = (Integer) data.get("quantity");
                 String orderId = (String) data.get("orderId");
 
-                Inventory inventory = repository.findById(productId)
+                Inventory inventory = inventoryRepository.findById(productId)
                     .orElseThrow(() -> new RuntimeException("Product not found"));
 
                 Map<String, Object> replyData = new HashMap<>();
                 replyData.put("orderId", orderId);
                 replyData.put("productId", productId);
 
+                Message<Map<String, Object>> replyMessage;
+
                 if (inventory.getQuantity() >= quantity) {
                     inventory.setQuantity(inventory.getQuantity() - quantity);
-                    repository.save(inventory); // Save lock optimista
-
+                    inventoryRepository.save(inventory); // Save lock optimista
+                    
                     replyData.put("newQuantity", inventory.getQuantity());
-                    return buildSagaReply(message, "StockUpdated", replyData);
+                    replyMessage = buildSagaReply(message, "StockUpdated", replyData);
                 } else {
                     replyData.put("reason", "Insufficient stock");
-                    return buildSagaReply(message, "StockRejected", replyData);
+                    replyMessage = buildSagaReply(message, "StockRejected", replyData);
                 }
+
+                // Guardar el evento para no volver a procesarlo (Idempotencia en misma transacción)
+                if (eventId != null) {
+                    eventRepository.save(new ProcessedEvent(eventId));
+                }
+
+                return replyMessage;
+
             } catch (Exception e) {
                 log.error("Error processing inventory event: ", e);
                 throw e; // Lanza para que DLQ lo capture
